@@ -10,7 +10,6 @@ function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [loadingFFmpeg, setLoadingFFmpeg] = useState(false);
 
-  // Draw Christmas tree with uploaded images
   const drawTree = async () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -74,14 +73,12 @@ function App() {
     setLoadingFFmpeg(true);
     if (!ffmpeg.isLoaded()) await ffmpeg.load();
 
-    // 1. Get the canvas as an image
     const imageBlob: Blob = await new Promise((resolve) =>
       canvas.toBlob((b) => resolve(b!), "image/png")
     );
     ffmpeg.FS("writeFile", "image.png", await fetchFile(imageBlob));
     ffmpeg.FS("writeFile", "audio.mp3", await fetchFile(audio));
 
-    // 2. Get audio duration
     const audioEl = new Audio(audioUrl);
     await new Promise<void>((resolve, reject) => {
       audioEl.onloadedmetadata = () => resolve();
@@ -90,20 +87,18 @@ function App() {
     });
     const durationSec = audioEl.duration;
 
-    // 3. Run FFmpeg: repeat the image for the audio duration
     await ffmpeg.run(
-      "-loop", "1",           // loop the image
-      "-i", "image.png",      // input image
-      "-i", "audio.mp3",      // input audio
+      "-loop", "1",
+      "-i", "image.png",
+      "-i", "audio.mp3",
       "-c:v", "libx264",
-      "-t", durationSec.toString(), // set video duration
+      "-t", durationSec.toString(),
       "-pix_fmt", "yuv420p",
       "-c:a", "aac",
-      "-shortest",            // stop at the end of audio
+      "-shortest",
       "output.mp4"
     );
 
-    // 4. Save MP4
     const data = ffmpeg.FS("readFile", "output.mp4");
     const mp4Blob = new Blob([data.buffer], { type: "video/mp4" });
     const url = URL.createObjectURL(mp4Blob);
@@ -121,7 +116,7 @@ function App() {
 
   return (
     <div style={{ textAlign: "center", padding: "20px" }}>
-      <h1>🎄 Christmas Tree Video Generator</h1>
+      <h1>Christmas Tree Video Generator</h1>
 
       <input
         type="file"
