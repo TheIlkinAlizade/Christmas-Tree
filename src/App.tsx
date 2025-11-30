@@ -71,14 +71,16 @@ function App() {
       const audioData = await fetchFile(audio);
       ffmpeg.FS("writeFile", "audio.mp3", audioData);
     }
-    
+
     // Run ffmpeg to create video
     await ffmpeg.run(
-      "-framerate", `${fps}`,
-      "-i", "img%d.png",
+      "-loop", "1",         
+      "-i", "img0.png",
       "-i", "audio.mp3",
       "-c:v", "libx264",
       "-pix_fmt", "yuv420p",
+      "-preset", "veryfast",
+      "-tune", "stillimage",
       "-shortest",
       "output.mp4"
     );
