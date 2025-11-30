@@ -1,10 +1,14 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import { useState, useEffect, useRef } from "react";
+import { createFFmpeg, fetchFile } from "@ffmpeg/ffmpeg";
+
+const ffmpeg = createFFmpeg({ log: true });
 
 function App() {
   const [images, setImages] = useState<File[]>([]);
   const [audio, setAudio] = useState<File | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [loadingFFmpeg, setLoadingFFmpeg] = useState(false);
 
   // Draw Christmas tree with uploaded images
   const drawTree = () => {
@@ -20,7 +24,6 @@ function App() {
     bgImg.onload = () => {
       ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
 
-      // Draw uploaded images as a pyramid
       const totalImages = images.length;
       let index = 0;
       for (let row = 0; index < totalImages; row++) {
@@ -72,43 +75,24 @@ function App() {
     const fps = 30;
     const canvasStream = canvas.captureStream(fps);
 
-    // Capture audio stream
     let audioStream: MediaStream | null = null;
     const audioElAny = audioEl as HTMLMediaElement & { captureStream?: () => MediaStream; mozCaptureStream?: () => MediaStream };
-    if (typeof audioElAny.captureStream === "function") {
-      audioStream = audioElAny.captureStream();
-    } else if (typeof audioElAny.mozCaptureStream === "function") {
-      audioStream = audioElAny.mozCaptureStream();
-    } else {
-      return alert("Your browser does not support capturing audio from an Audio element.");
-    }
+    if (typeof audioElAny.captureStream === "function") audioStream = audioElAny.captureStream();
+    else if (typeof audioElAny.mozCaptureStream === "function") audioStream = audioElAny.mozCaptureStream();
+    else return alert("Your browser does not support capturing audio from an Audio element.");
 
     audioStream?.getAudioTracks().forEach((t) => canvasStream.addTrack(t));
 
-    // Prepare MediaRecorder
-    let recorder: MediaRecorder;
-    try {
-      recorder = new MediaRecorder(canvasStream, { mimeType: "video/webm; codecs=vp9,opus" });
-    } catch {
-      try {
-        recorder = new MediaRecorder(canvasStream, { mimeType: "video/webm; codecs=vp8,opus" });
-      } catch {
-        recorder = new MediaRecorder(canvasStream); // fallback
-      }
-    }
-
+    // Record WebM first
     const chunks: Blob[] = [];
-    recorder.ondataavailable = (ev) => { if (ev.data && ev.data.size) chunks.push(ev.data); };
+    const recorder = new MediaRecorder(canvasStream, { mimeType: "video/webm; codecs=vp9,opus" });
     const stopped = new Promise<void>((resolve) => { recorder.onstop = () => resolve(); });
-
-    recorder.start(1000); // record chunks every 1s
+    recorder.ondataavailable = (ev) => { if (ev.data && ev.data.size) chunks.push(ev.data); };
+    recorder.start(1000);
 
     audioEl.volume = 1.0;
-    audioEl.play().catch(() => {
-      alert("Audio playback blocked by browser. Click Play on the page to allow recording.");
-    });
+    audioEl.play().catch(() => { alert("Audio playback blocked. Click Play."); });
 
-    // Stop recording after audio ends
     setTimeout(() => {
       if (recorder.state === "recording") recorder.stop();
       audioEl.pause();
@@ -116,15 +100,26 @@ function App() {
 
     await stopped;
 
-    // Download video
-    const blob = new Blob(chunks, { type: "video/webm" });
-    const url = URL.createObjectURL(blob);
+    const webmBlob = new Blob(chunks, { type: "video/webm" });
+
+    // Convert WebM → MP4 using FFmpeg
+    setLoadingFFmpeg(true);
+    if (!ffmpeg.isLoaded()) await ffmpeg.load();
+
+    ffmpeg.FS("writeFile", "input.webm", await fetchFile(webmBlob));
+    await ffmpeg.run("-i", "input.webm", "-c:v", "libx264", "-c:a", "aac", "-b:a", "192k", "output.mp4");
+    const data = ffmpeg.FS("readFile", "output.mp4");
+    const mp4Blob = new Blob([data.buffer], { type: "video/mp4" });
+
+    const url = URL.createObjectURL(mp4Blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "christmas_tree.webm";
+    a.download = "christmas_tree.mp4";
     a.click();
 
+    URL.revokeObjectURL(url);
     URL.revokeObjectURL(audioUrl);
+    setLoadingFFmpeg(false);
   };
 
   return (
@@ -154,7 +149,9 @@ function App() {
       />
       <br /><br />
 
-      <button onClick={generateVideo}>Generate Video</button>
+      <button onClick={generateVideo} disabled={loadingFFmpeg}>
+        {loadingFFmpeg ? "Processing MP4..." : "Generate MP4 Video"}
+      </button>
     </div>
   );
 }
