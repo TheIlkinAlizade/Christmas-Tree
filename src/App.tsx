@@ -20,7 +20,7 @@ function App() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     const bgImg = new Image();
-    bgImg.src = "/images/ctree.jpg"; // make sure this is in public/images
+    bgImg.src = "/images/ctree.jpg"; // make sure this exists in public/images
     bgImg.onload = () => {
       ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
 
@@ -54,70 +54,44 @@ function App() {
     if (!audio) return alert("Please upload an audio file");
 
     const audioUrl = URL.createObjectURL(audio);
-    const audioEl = new Audio(audioUrl);
-    audioEl.crossOrigin = "anonymous";
 
-    // Wait until metadata (duration) is loaded
-    await new Promise<void>((resolve, reject) => {
-      const onLoaded = () => { audioEl.removeEventListener("loadedmetadata", onLoaded); resolve(); };
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const onErr = (_e: Event) => { audioEl.removeEventListener("error", onErr); reject(); };
-      audioEl.addEventListener("loadedmetadata", onLoaded);
-      audioEl.addEventListener("error", onErr);
-      audioEl.load();
-    });
-
-    const durationSec = audioEl.duration;
-    if (!durationSec || isNaN(durationSec) || !isFinite(durationSec)) {
-      return alert("Couldn't read audio duration.");
-    }
-
-    const fps = 30;
-    const canvasStream = canvas.captureStream(fps);
-
-    let audioStream: MediaStream | null = null;
-    const audioElAny = audioEl as HTMLMediaElement & { captureStream?: () => MediaStream; mozCaptureStream?: () => MediaStream };
-    if (typeof audioElAny.captureStream === "function") audioStream = audioElAny.captureStream();
-    else if (typeof audioElAny.mozCaptureStream === "function") audioStream = audioElAny.mozCaptureStream();
-    else return alert("Your browser does not support capturing audio from an Audio element.");
-
-    audioStream?.getAudioTracks().forEach((t) => canvasStream.addTrack(t));
-
-    // Record WebM first
-    // Record WebM robustly
-    const chunks: Blob[] = [];
-    const recorder = new MediaRecorder(canvasStream, { mimeType: "video/webm; codecs=vp8,opus" });
-
-    const stopped = new Promise<Blob[]>((resolve, reject) => {
-      recorder.ondataavailable = (ev) => {
-        if (ev.data && ev.data.size) chunks.push(ev.data);
-      };
-      recorder.onstop = () => resolve(chunks);
-      recorder.onerror = (e) => reject(e);
-    });
-
-    audioEl.onended = () => recorder.stop();
-
-    recorder.start();
-
-    audioEl.volume = 1.0;
-    audioEl.play().catch(() => {
-      alert("Audio playback blocked by browser. Click Play on the page.");
-    });
-
-    const recordedChunks = await stopped;
-    const webmBlob = new Blob(recordedChunks, { type: "video/webm" });
-
-
-    // Convert WebM → MP4 using FFmpeg
+    // Load FFmpeg if not loaded
     setLoadingFFmpeg(true);
     if (!ffmpeg.isLoaded()) await ffmpeg.load();
 
-    ffmpeg.FS("writeFile", "input.webm", await fetchFile(webmBlob));
-    await ffmpeg.run("-i", "input.webm", "-c:v", "libx264", "-c:a", "aac", "-b:a", "192k", "output.mp4");
+    // Capture frames from canvas
+    const fps = 30;
+    const durationSec = 5; // you can adjust this to match audio or dynamic duration
+    const frameCount = Math.ceil(durationSec * fps);
+
+    for (let i = 0; i < frameCount; i++) {
+      // Optional: animate or redraw for each frame here
+      drawTree();
+
+      const frameBlob: Blob = await new Promise((resolve) =>
+        canvas.toBlob((b) => resolve(b!), "image/png")
+      );
+
+      ffmpeg.FS("writeFile", `frame_${i.toString().padStart(4, "0")}.png`, await fetchFile(frameBlob));
+    }
+
+    // Write audio file to FFmpeg FS
+    ffmpeg.FS("writeFile", "audio.mp3", await fetchFile(audio));
+
+    // Run FFmpeg to generate MP4
+    await ffmpeg.run(
+      "-framerate", fps.toString(),
+      "-i", "frame_%04d.png",
+      "-i", "audio.mp3",
+      "-c:v", "libx264",
+      "-pix_fmt", "yuv420p",
+      "-c:a", "aac",
+      "-shortest",
+      "output.mp4"
+    );
+
     const data = ffmpeg.FS("readFile", "output.mp4");
     const mp4Blob = new Blob([data.buffer], { type: "video/mp4" });
-
     const url = URL.createObjectURL(mp4Blob);
     const a = document.createElement("a");
     a.href = url;
