@@ -52,6 +52,7 @@ function App() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    const fps = 1; // 1 frame per second for simplicity
     const frames: Blob[] = [];
 
     // Capture canvas frames (simple static frame for now)
@@ -70,16 +71,14 @@ function App() {
       const audioData = await fetchFile(audio);
       ffmpeg.FS("writeFile", "audio.mp3", audioData);
     }
-
+    
     // Run ffmpeg to create video
     await ffmpeg.run(
-      "-loop", "1",         
-      "-i", "img0.png",
+      "-framerate", `${fps}`,
+      "-i", "img%d.png",
       "-i", "audio.mp3",
       "-c:v", "libx264",
       "-pix_fmt", "yuv420p",
-      "-preset", "veryfast",
-      "-tune", "stillimage",
       "-shortest",
       "output.mp4"
     );
