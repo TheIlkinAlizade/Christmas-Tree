@@ -1,4 +1,5 @@
 interface Props {
+  images: File[];
   setImages: (files: File[]) => void;
   setAudio: (file: File | null) => void;
   generateVideo: () => void;
@@ -6,6 +7,7 @@ interface Props {
 }
 
 function VideoControls({
+  images,
   setImages,
   setAudio,
   generateVideo,
@@ -20,7 +22,8 @@ function VideoControls({
         onChange={(e) => setImages(Array.from(e.target.files || []))}
       />
 
-      <br /><br />
+      <br />
+      <br />
 
       <input
         type="file"
@@ -28,7 +31,8 @@ function VideoControls({
         onChange={(e) => setAudio(e.target.files?.[0] || null)}
       />
 
-      <br /><br />
+      <br />
+      <br />
 
       <button onClick={generateVideo} disabled={loadingFFmpeg}>
         {loadingFFmpeg ? "Processing..." : "Generate MP4"}

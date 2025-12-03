@@ -3,66 +3,27 @@ import { useState, useRef, useEffect } from "react";
 import { createFFmpeg, fetchFile } from "@ffmpeg/ffmpeg";
 
 const ffmpeg = createFFmpeg({ log: true });
+const IMAGE_SIZE = 100;
 
 export function useChristmasTreeVideo() {
   const [images, setImages] = useState<File[]>([]);
+  const [positions, setPositions] = useState<{ x: number; y: number }[]>([]);
   const [audio, setAudio] = useState<File | null>(null);
   const [loadingFFmpeg, setLoadingFFmpeg] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // DRAW TREE (same as before)
-  const drawTree = async () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    const bgImg = new Image();
-    bgImg.src = "/images/ctree.jpg";
-    await new Promise<void>((res) => (bgImg.onload = () => res()));
-
-    ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
-
-    let index = 0;
-
-    for (let row = 0; index < images.length; row++) {
-      const numInRow = row + 1;
-      const y = 50 + row * 100;
-      const rowWidth = numInRow * 100;
-      const startX = (canvas.width - rowWidth) / 2;
-
-      const rowPromises: Promise<void>[] = [];
-
-      for (let col = 0; col < numInRow && index < images.length; col++) {
-        const img = new Image();
-        img.src = URL.createObjectURL(images[index]);
-
-        const x = startX + col * 100;
-
-        rowPromises.push(
-          new Promise((resolve) => {
-            img.onload = () => {
-              ctx.drawImage(img, x, y, 80, 80);
-              resolve();
-            };
-          })
-        );
-
-        index++;
-      }
-
-      await Promise.all(rowPromises);
-    }
-  };
-
+  // Initialize positions when images change
   useEffect(() => {
-    drawTree();
+    setPositions((prev) => {
+      if (prev.length === images.length) return prev;
+      return images.map((_, i) => ({
+        x: 50 + (i % 5) * 110,
+        y: 50 + Math.floor(i / 5) * 110,
+      }));
+    });
   }, [images]);
-  
+
   const loadDefaultAudioFile = async (): Promise<File> => {
     const response = await fetch("/audio/default.mp3");
     const blob = await response.blob();
@@ -133,6 +94,8 @@ export function useChristmasTreeVideo() {
   return {
     images,
     setImages,
+    positions,
+    setPositions,
     audio,
     setAudio,
     generateVideo,
