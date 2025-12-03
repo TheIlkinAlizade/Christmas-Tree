@@ -7,7 +7,6 @@ interface Props {
 }
 
 function VideoControls({
-  images,
   setImages,
   setAudio,
   generateVideo,

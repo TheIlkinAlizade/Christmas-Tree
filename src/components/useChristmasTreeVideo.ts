@@ -1,9 +1,8 @@
-/* eslint-disable react-hooks/exhaustive-deps */
+ 
 import { useState, useRef, useEffect } from "react";
 import { createFFmpeg, fetchFile } from "@ffmpeg/ffmpeg";
 
 const ffmpeg = createFFmpeg({ log: true });
-const IMAGE_SIZE = 100;
 
 export function useChristmasTreeVideo() {
   const [images, setImages] = useState<File[]>([]);
@@ -15,6 +14,7 @@ export function useChristmasTreeVideo() {
 
   // Initialize positions when images change
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPositions((prev) => {
       if (prev.length === images.length) return prev;
       return images.map((_, i) => ({
