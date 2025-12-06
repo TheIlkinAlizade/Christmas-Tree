@@ -1,0 +1,57 @@
+.canvas-size-selector {
+  padding: 15px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.canvas-size-selector h3 {
+  margin: 0 0 12px 0;
+  color: #333;
+  font-size: 16px;
+}
+
+.size-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.size-button {
+  padding: 10px 12px;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  background: white;
+  color: #333;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-align: left;
+}
+
+.size-button:hover {
+  border-color: #FF6B35;
+  background: #fff5f0;
+}
+
+.size-button.selected {
+  border-color: #FF6B35;
+  background: #FF6B35;
+  color: white;
+  box-shadow: 0 2px 8px rgba(255, 107, 53, 0.3);
+}
+
+@media (max-width: 768px) {
+  .canvas-size-selector {
+    padding: 12px;
+  }
+
+  .canvas-size-selector h3 {
+    font-size: 14px;
+    margin-bottom: 10px;
+  }
+
+  .size-button {
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+}

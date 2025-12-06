@@ -5,24 +5,66 @@ interface ImageCanvasProps {
   images: File[];
   positions: { x: number; y: number }[];
   setPositions: React.Dispatch<React.SetStateAction<{ x: number; y: number }[]>>;
+  backgroundSrc?: string;
+  treeSrc?: string;
+  width?: number;
+  height?: number;
 }
 
-const IMAGE_SIZE = 100;
+const IMAGE_SIZE = 150;
+const DEFAULT_WIDTH = 1080;
+const DEFAULT_HEIGHT = 1350;
 
-export default function ImageCanvas({ canvasRef, images, positions, setPositions }: ImageCanvasProps) {
+export default function ImageCanvas({ 
+  canvasRef, 
+  images, 
+  positions, 
+  setPositions,
+  backgroundSrc,
+  treeSrc,
+  width = DEFAULT_WIDTH,
+  height = DEFAULT_HEIGHT
+}: ImageCanvasProps) {
   const [loadedImages, setLoadedImages] = useState<HTMLImageElement[]>([]);
   const [bgLoaded, setBgLoaded] = useState(false);
+  const [treeLoaded, setTreeLoaded] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const offset = useRef({ x: 0, y: 0 });
+  const dragIndexRef = useRef<number | null>(null);
   const bgImage = useRef<HTMLImageElement | null>(null);
+  const treeImage = useRef<HTMLImageElement | null>(null);
+  const currentPositions = useRef<{ x: number; y: number }[]>([]);
+
+  // Set canvas size
+  useEffect(() => {
+    if (canvasRef.current) {
+      canvasRef.current.width = width;
+      canvasRef.current.height = height;
+    }
+  }, [width, height, canvasRef]);
 
   // Load background
   useEffect(() => {
+    setBgLoaded(false);
     const bg = new Image();
-    bg.src = "/images/ctree.jpg";
+    bg.src = backgroundSrc || "/images/ctree.jpg";
     bg.onload = () => setBgLoaded(true);
     bgImage.current = bg;
-  }, []);
+  }, [backgroundSrc]);
+
+  // Load tree overlay
+  useEffect(() => {
+    if (!treeSrc) {
+      setTreeLoaded(true);
+      return;
+    }
+    setTreeLoaded(false);
+    const tree = new Image();
+    tree.src = treeSrc;
+    tree.onload = () => setTreeLoaded(true);
+    treeImage.current = tree;
+  }, [treeSrc]);
 
   // Preload images
   useEffect(() => {
@@ -38,20 +80,80 @@ export default function ImageCanvas({ canvasRef, images, positions, setPositions
     Promise.all(promises).then((imgs) => setLoadedImages(imgs));
   }, [images]);
 
+  // Keep track of current positions for smooth dragging
+  useEffect(() => {
+    currentPositions.current = positions;
+  }, [positions]);
+
+  // Helper function to draw image with cover (no stretching)
+  const drawImageCover = (img: HTMLImageElement, x: number, y: number, w: number, h: number, ctx: CanvasRenderingContext2D) => {
+    const imgAspect = img.width / img.height;
+    const containerAspect = w / h;
+    let sourceWidth = img.width;
+    let sourceHeight = img.height;
+    let sourceX = 0;
+    let sourceY = 0;
+
+    if (imgAspect > containerAspect) {
+      sourceWidth = img.height * containerAspect;
+      sourceX = (img.width - sourceWidth) / 2;
+    } else {
+      sourceHeight = img.width / containerAspect;
+      sourceY = (img.height - sourceHeight) / 2;
+    }
+
+    ctx.drawImage(img, sourceX, sourceY, sourceWidth, sourceHeight, x, y, w, h);
+  };
+
+  // Calculate padding for tree
+  const getTreePadding = () => {
+    return { top: 80, bottom: 80, left: 40, right: 40 };
+  };
+
   // Draw canvas
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx || !bgLoaded) return;
+    if (!canvas || !ctx || !bgLoaded || !treeLoaded) return;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (bgImage.current) ctx.drawImage(bgImage.current, 0, 0, canvas.width, canvas.height);
+    
+    // Draw background with cover
+    if (bgImage.current) {
+      drawImageCover(bgImage.current, 0, 0, canvas.width, canvas.height, ctx);
+    }
 
+    // Draw tree overlay with padding
+    if (treeImage.current) {
+      const padding = getTreePadding();
+      const treeWidth = canvas.width - padding.left - padding.right;
+      const treeHeight = canvas.height - padding.top - padding.bottom;
+      drawImageCover(treeImage.current, padding.left, padding.top, treeWidth, treeHeight, ctx);
+    }
+
+    // Draw user images (ornaments/toys) on top
     loadedImages.forEach((img, i) => {
       const pos = positions[i];
-      if (pos) ctx.drawImage(img, pos.x, pos.y, IMAGE_SIZE, IMAGE_SIZE);
+      if (pos) {
+        if (i === hoveredIndex || i === dragIndex) {
+          ctx.globalAlpha = 0.85;
+        }
+        ctx.drawImage(img, pos.x, pos.y, IMAGE_SIZE, IMAGE_SIZE);
+        ctx.globalAlpha = 1.0;
+        
+        if (i === hoveredIndex || i === dragIndex) {
+          ctx.shadowColor = i === dragIndex ? "#FFD700" : "#FFA500";
+          ctx.shadowBlur = 8;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 0;
+          ctx.strokeStyle = i === dragIndex ? "#FFD700" : "#FFA500";
+          ctx.lineWidth = 5;
+          ctx.strokeRect(pos.x - 2, pos.y - 2, IMAGE_SIZE + 4, IMAGE_SIZE + 4);
+          ctx.shadowColor = "transparent";
+        }
+      }
     });
-  }, [loadedImages, positions, bgLoaded, canvasRef]);
+  }, [loadedImages, positions, bgLoaded, treeLoaded, canvasRef, width, height, hoveredIndex, dragIndex]);
 
   // Drag logic
   useEffect(() => {
@@ -68,49 +170,95 @@ export default function ImageCanvas({ canvasRef, images, positions, setPositions
       return { x: 0, y: 0 };
     };
 
+    const getHoveredImage = (pos: { x: number; y: number }) => {
+      for (let i = loadedImages.length - 1; i >= 0; i--) {
+        const imgPos = currentPositions.current[i];
+        if (!imgPos) continue;
+        if (pos.x >= imgPos.x - 20 && pos.x <= imgPos.x + IMAGE_SIZE + 20 && 
+            pos.y >= imgPos.y - 20 && pos.y <= imgPos.y + IMAGE_SIZE + 20) {
+          return i;
+        }
+      }
+      return null;
+    };
+
     const handleDown = (e: MouseEvent | TouchEvent) => {
       const pos = getMousePos(e);
-      for (let i = loadedImages.length - 1; i >= 0; i--) {
-        const imgPos = positions[i];
-        if (!imgPos) continue;
-        if (pos.x >= imgPos.x && pos.x <= imgPos.x + IMAGE_SIZE && pos.y >= imgPos.y && pos.y <= imgPos.y + IMAGE_SIZE) {
-          setDragIndex(i);
-          offset.current = { x: pos.x - imgPos.x, y: pos.y - imgPos.y };
-          break;
-        }
+      const index = getHoveredImage(pos);
+      if (index !== null) {
+        dragIndexRef.current = index;
+        setDragIndex(index);
+        const imgPos = currentPositions.current[index];
+        offset.current = { x: pos.x - imgPos.x, y: pos.y - imgPos.y };
       }
     };
 
     const handleMove = (e: MouseEvent | TouchEvent) => {
-      if (dragIndex === null) return;
       const pos = getMousePos(e);
-      setPositions((prev) => {
-        const newPos = [...prev];
-        newPos[dragIndex] = { x: pos.x - offset.current.x, y: pos.y - offset.current.y };
-        return newPos;
-      });
+      
+      if (dragIndexRef.current === null) {
+        const hoveredIdx = getHoveredImage(pos);
+        setHoveredIndex(hoveredIdx);
+        canvas.style.cursor = hoveredIdx !== null ? "grab" : "default";
+      } else {
+        canvas.style.cursor = "grabbing";
+        const newPos = [...currentPositions.current];
+        newPos[dragIndexRef.current] = { x: pos.x - offset.current.x, y: pos.y - offset.current.y };
+        currentPositions.current = newPos;
+        setPositions(newPos);
+      }
     };
 
-    const handleUp = () => setDragIndex(null);
+    const handleUp = () => {
+      dragIndexRef.current = null;
+      setDragIndex(null);
+      setHoveredIndex(null);
+      canvas.style.cursor = "default";
+    };
+
+    const handleLeave = () => {
+      if (dragIndexRef.current === null) {
+        setHoveredIndex(null);
+        canvas.style.cursor = "default";
+      }
+    };
 
     canvas.addEventListener("mousedown", handleDown);
     canvas.addEventListener("mousemove", handleMove);
     canvas.addEventListener("mouseup", handleUp);
-    canvas.addEventListener("mouseleave", handleUp);
+    canvas.addEventListener("mouseleave", handleLeave);
     canvas.addEventListener("touchstart", handleDown);
     canvas.addEventListener("touchmove", handleMove);
     canvas.addEventListener("touchend", handleUp);
+
+    // Document-level listeners for drag outside canvas
+    const handleDocumentMove = (e: MouseEvent) => {
+      if (dragIndexRef.current !== null) {
+        handleMove(e);
+      }
+    };
+
+    const handleDocumentUp = () => {
+      if (dragIndexRef.current !== null) {
+        handleUp();
+      }
+    };
+
+    document.addEventListener("mousemove", handleDocumentMove);
+    document.addEventListener("mouseup", handleDocumentUp);
 
     return () => {
       canvas.removeEventListener("mousedown", handleDown);
       canvas.removeEventListener("mousemove", handleMove);
       canvas.removeEventListener("mouseup", handleUp);
-      canvas.removeEventListener("mouseleave", handleUp);
+      canvas.removeEventListener("mouseleave", handleLeave);
       canvas.removeEventListener("touchstart", handleDown);
       canvas.removeEventListener("touchmove", handleMove);
       canvas.removeEventListener("touchend", handleUp);
+      document.removeEventListener("mousemove", handleDocumentMove);
+      document.removeEventListener("mouseup", handleDocumentUp);
     };
-  }, [dragIndex, loadedImages, positions, canvasRef, setPositions]);
+  }, [loadedImages, positions, canvasRef, setPositions]);
 
   return <canvas ref={canvasRef} width={600} height={600} style={{ border: "1px solid #555" }} />;
 }
