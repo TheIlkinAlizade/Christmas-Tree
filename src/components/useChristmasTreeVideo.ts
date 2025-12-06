@@ -14,13 +14,25 @@ export function useChristmasTreeVideo() {
 
   // Initialize positions when images change
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPositions((prev) => {
+      // If we have the same number of positions as images, keep existing positions
       if (prev.length === images.length) return prev;
-      return images.map((_, i) => ({
-        x: 50 + (i % 5) * 110,
-        y: 50 + Math.floor(i / 5) * 110,
-      }));
+      
+      // If we have fewer positions than images, add positions for new images
+      if (prev.length < images.length) {
+        const newPositions = [...prev];
+        const startIndex = prev.length;
+        for (let i = startIndex; i < images.length; i++) {
+          newPositions.push({
+            x: 50 + (i % 5) * 110,
+            y: 50 + Math.floor(i / 5) * 110,
+          });
+        }
+        return newPositions;
+      }
+      
+      // If we have more positions than images, keep only the positions for remaining images
+      return prev.slice(0, images.length);
     });
   }, [images]);
 
